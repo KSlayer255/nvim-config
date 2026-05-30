@@ -50,7 +50,7 @@ end, { desc = "Delete Other Buffers" })
 
 keymap("n", "<leader>bD", "<cmd>bdelete!<cr>", { desc = "Delete Buffer and Window" })
 
-keymap({ "n" }, "<leader>h", function()
+keymap({ "n" }, "<leader>hh", function()
 	vim.fn.setreg("/", "") -- Alternative way to clear search register
 end, { desc = "Clear search register" })
 

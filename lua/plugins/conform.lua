@@ -10,6 +10,7 @@ return {
 				"ruff_format",
 				"ruff_organize_imports",
 			},
+			verilog = { "verible" },
 			javascript = { "prettierd", "prettier", stop_after_first = true },
 			tex = { "latexindent" },
 			rust = { "rustfmt" },

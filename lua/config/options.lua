@@ -18,3 +18,5 @@ vim.g.mapleader = " "
 vim.g.maplocalleader = "\\"
 
 vim.api.nvim_set_hl(0, "NormalFloat", { bg = "none" })
+
+vim.fn.system("source ~/.bashrc")

@@ -17,6 +17,7 @@ return {
 				"rust-analyzer",
 				-- All for one
 				"ruff",
+				"verible",
 			},
 		},
 	},

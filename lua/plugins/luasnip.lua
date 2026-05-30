@@ -34,7 +34,127 @@ return {
 			{ trig = "rm", cmd = "mathrm" },
 			{ trig = "sf", cmd = "mathsf" },
 			{ trig = "tt", cmd = "mathtt" },
-			{ trig = "it", cmd = "mathit" },
+		}
+
+		local greek_symbols = {
+			{ trig = "alpha", cmd = "alpha" },
+			{ trig = "beta", cmd = "beta" },
+			{ trig = "gamma", cmd = "gamma" },
+			{ trig = "Gamma", cmd = "Gamma" },
+			{ trig = "delta", cmd = "delta" },
+			{ trig = "Delta", cmd = "Delta" },
+			{ trig = "epsilon", cmd = "epsilon" },
+			{ trig = "varepsilon", cmd = "varepsilon" },
+			{ trig = "zeta", cmd = "zeta" },
+			{ trig = "eta", cmd = "eta" },
+			{ trig = "theta", cmd = "theta" },
+			{ trig = "vartheta", cmd = "vartheta" },
+			{ trig = "Theta", cmd = "Theta" },
+			{ trig = "iota", cmd = "iota" },
+			{ trig = "kappa", cmd = "kappa" },
+			{ trig = "lambda", cmd = "lambda" },
+			{ trig = "Lambda", cmd = "Lambda" },
+			{ trig = "mu", cmd = "mu" },
+			{ trig = "nu", cmd = "nu" },
+			{ trig = "xi", cmd = "xi" },
+			{ trig = "omicron", cmd = "omicron" },
+			{ trig = "pi", cmd = "pi" },
+			{ trig = "Pi", cmd = "Pi" },
+			{ trig = "rho", cmd = "rho" },
+			{ trig = "varrho", cmd = "varrho" },
+			{ trig = "sigma", cmd = "sigma" },
+			{ trig = "Sigma", cmd = "Sigma" },
+			{ trig = "tau", cmd = "tau" },
+			{ trig = "upsilon", cmd = "upsilon" },
+			{ trig = "Upsilon", cmd = "Upsilon" },
+			{ trig = "phi", cmd = "phi" },
+			{ trig = "varphi", cmd = "varphi" },
+			{ trig = "Phi", cmd = "Phi" },
+			{ trig = "chi", cmd = "chi" },
+			{ trig = "omega", cmd = "omega" },
+			{ trig = "Omega", cmd = "Omega" },
+		}
+
+		local symbols = {
+			{ trig = "parallel", cmd = "parallel" },
+			{ trig = "perp", cmd = "perp" },
+			{ trig = "partial", cmd = "partial" },
+			{ trig = "nabla", cmd = "nabla" },
+			{ trig = "hbar", cmd = "hbar" },
+			{ trig = "ell", cmd = "ell" },
+			{ trig = "infty", cmd = "infty" },
+			{ trig = "oplus", cmd = "oplus" },
+			{ trig = "ominus", cmd = "ominus" },
+			{ trig = "otimes", cmd = "otimes" },
+			{ trig = "oslash", cmd = "oslash" },
+			{ trig = "square", cmd = "square" },
+			{ trig = "star", cmd = "star" },
+			{ trig = "dagger", cmd = "dagger" },
+			{ trig = "vee", cmd = "vee" },
+			{ trig = "wedge", cmd = "wedge" },
+			{ trig = "subseteq", cmd = "subseteq" },
+			{ trig = "subset", cmd = "subset" },
+			{ trig = "supseteq", cmd = "supseteq" },
+			{ trig = "supset", cmd = "supset" },
+			{ trig = "emptyset", cmd = "emptyset" },
+			{ trig = "exists", cmd = "exists" },
+			{ trig = "nexists", cmd = "nexists" },
+			{ trig = "forall", cmd = "forall" },
+			{ trig = "implies", cmd = "implies" },
+			{ trig = "impliedby", cmd = "impliedby" },
+			{ trig = "iff", cmd = "iff" },
+			{ trig = "setminus", cmd = "setminus" },
+			{ trig = "neg", cmd = "neg" },
+			{ trig = "lor", cmd = "lor" },
+			{ trig = "land", cmd = "land" },
+			{ trig = "bigcup", cmd = "bigcup" },
+			{ trig = "bigcap", cmd = "bigcap" },
+			{ trig = "cdot", cmd = "cdot" },
+			{ trig = "times", cmd = "times" },
+			{ trig = "simeq", cmd = "simeq" },
+			{ trig = "approx", cmd = "approx" },
+		}
+
+		local more_symbols = {
+			{ trig = "leq", cmd = "leq" },
+			{ trig = "geq", cmd = "geq" },
+			{ trig = "neq", cmd = "neq" },
+			{ trig = "gg", cmd = "gg" },
+			{ trig = "ll", cmd = "ll" },
+			{ trig = "equiv", cmd = "equiv" },
+			{ trig = "sim", cmd = "sim" },
+			{ trig = "propto", cmd = "propto" },
+			{ trig = "rightarrow", cmd = "rightarrow" },
+			{ trig = "leftarrow", cmd = "leftarrow" },
+			{ trig = "Rightarrow", cmd = "Rightarrow" },
+			{ trig = "Leftarrow", cmd = "Leftarrow" },
+			{ trig = "leftrightarrow", cmd = "leftrightarrow" },
+			{ trig = "to", cmd = "to" },
+			{ trig = "mapsto", cmd = "mapsto" },
+			{ trig = "cap", cmd = "cap" },
+			{ trig = "cup", cmd = "cup" },
+			{ trig = "inn", cmd = "in" },
+			{ trig = "sum", cmd = "sum" },
+			{ trig = "prod", cmd = "prod" },
+			{ trig = "exp", cmd = "exp" },
+			{ trig = "ln", cmd = "ln" },
+			{ trig = "log", cmd = "log" },
+			{ trig = "sin", cmd = "sin" },
+			{ trig = "cos", cmd = "cos" },
+			{ trig = "tan", cmd = "tan" },
+			{ trig = "arcsin", cmd = "arcsin" },
+			{ trig = "arccos", cmd = "arccos" },
+			{ trig = "arctan", cmd = "arctan" },
+			{ trig = "det", cmd = "det" },
+			{ trig = "dots", cmd = "dots" },
+			{ trig = "vdots", cmd = "vdots" },
+			{ trig = "ddots", cmd = "ddots" },
+			{ trig = "pm", cmd = "pm" },
+			{ trig = "mp", cmd = "mp" },
+			{ trig = "int", cmd = "int" },
+			{ trig = "iint", cmd = "iint" },
+			{ trig = "iiint", cmd = "iiint" },
+			{ trig = "oint", cmd = "oint" },
 		}
 
 		local math_types = {
@@ -64,12 +184,16 @@ return {
 			end
 			return false
 		end
+
 		ls.config.setup({
 			enable_autosnippets = true,
 			update_events = "TextChanged,TextChangedI",
 		})
+
 		ls.add_snippets("tex", {
 			s({ trig = "mk", wordTrig = false, snippetType = "autosnippet" }, fmta([[\(<>\)]], { i(1) })),
+			s({ trig = "lr(", wordTrig = false, snippetType = "autosnippet" }, fmta([[\left(<>\right)]], { i(1) })),
+			s({ trig = "lr[", wordTrig = false, snippetType = "autosnippet" }, fmta([[\left[<>\right] ]], { i(1) })),
 			s(
 				{ trig = "dm", wordTrig = false, snippetType = "autosnippet" },
 				fmta(
@@ -85,11 +209,36 @@ return {
 				{ trig = "@begin", wordTrig = false, snippetType = "autosnippet" },
 				fmta(
 					[[
-          \begin{<>} 
-          <> 
+          \begin{<>}
+          <>
           \end{<>}
           ]],
 					{ i(1), i(2), rep(1) }
+				)
+			),
+			s(
+				{ trig = "@question", wordTrig = false, snippetType = "autosnippet" },
+				fmta(
+					[[
+          \begin{question}
+          \questiontext{<>}
+          \answer{
+
+          }
+          \end{question}
+          ]],
+					{ i(1) }
+				)
+			),
+			s(
+				{ trig = "@align", wordTrig = false, snippetType = "autosnippet" },
+				fmta(
+					[[
+          \begin{align*}
+          <>
+          \end{align*}
+          ]],
+					{ i(1) }
 				)
 			),
 			-- Add these to your ls.add_snippets("tex", { ... }) call
@@ -155,6 +304,7 @@ return {
 				end, {}),
 			}),
 		})
+
 		for _, dec in ipairs(decorators) do
 			-- Pattern like: "xhat" -> "\hat{x}"
 			ls.add_snippets("tex", {
@@ -174,6 +324,28 @@ return {
 				}),
 			})
 		end
+
+		local snippet_defs = {}
+		for _, tab in ipairs({ greek_symbols, symbols, more_symbols }) do
+			for _, sym in ipairs(tab) do
+				table.insert(
+					snippet_defs,
+					s({
+						trig = sym.trig,
+						regTrig = true,
+						wordTrig = false,
+						priority = sym.priority or DEFAULT_PRIORITY,
+						snippetType = "autosnippet",
+						condition = in_math_mode,
+					}, {
+						f(function()
+							return "\\" .. sym.cmd
+						end, {}),
+					})
+				)
+			end
+		end
+		ls.add_snippets("tex", snippet_defs)
 
 		vim.keymap.set("i", "<C-k>", function()
 			ls.expand()
