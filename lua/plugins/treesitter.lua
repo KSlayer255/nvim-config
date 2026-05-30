@@ -16,6 +16,7 @@ return {
 				"bash",
 				"latex",
 				"verilog",
+				"typst",
 			},
 			sync_install = false,
 			auto_install = true,
