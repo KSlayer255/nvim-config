@@ -1,3 +1,5 @@
+if vim.fn.has("win32") == 1 then return {} end
+
 return {
 	"ErickKramer/nvim-ros2",
 	dependencies = {

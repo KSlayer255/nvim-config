@@ -56,10 +56,12 @@ end, { desc = "Clear search register" })
 
 -- Explorer
 -- keymap('n', '<leader>pv', ':Ex<CR>') -- netrw, commented out after getting neotree
-keymap("n", "<leader>vc", ":cd ~/.config/nvim<cr>")
+keymap("n", "<leader>vc", function()
+  vim.cmd("cd " .. vim.fn.stdpath("config"))
+end)
 
 keymap("n", "<leader>rr", function()
-	vim.cmd("split | terminal ~/.cargo/bin/cargo run")
+vim.cmd("split | terminal cargo run")
 end, { desc = "Run Rust project" })
 
 keymap("n", "<leader>ha", ":lua vim.diagnostic.open_float()<cr>")

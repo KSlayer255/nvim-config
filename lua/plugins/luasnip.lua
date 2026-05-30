@@ -1,7 +1,7 @@
 return {
 	"L3MON4D3/LuaSnip",
 	version = "v2.*",
-	build = "make install_jsregexp",
+	build = vim.fn.has("win32") == 1 and "cmake -S. -Bbuild -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release && cmake --install build --prefix build" or "make install_jsregexp",
 	config = function()
 		local ls = require("luasnip")
 		local s = ls.snippet
