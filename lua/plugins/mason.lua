@@ -12,6 +12,7 @@ return {
 				"pyright",
 				"texlab",
 				"verible",
+				"tinymist",
 			},
 			automatic_enable = true, -- automatically calls vim.lsp.enable() for installed servers
 		},
@@ -26,6 +27,7 @@ return {
 				"latexindent",
 				"selene",
 				"ruff",
+				"prettypst",
 			},
 			run_on_start = true,
 		},

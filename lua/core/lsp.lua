@@ -1,6 +1,6 @@
 -- vim.lsp.enable({ "lua_ls" })
 -- vim.lsp.enable({ "pyright" })
-vim.lsp.enable({ "verible" })
+-- vim.lsp.enable({ "verible" })
 vim.diagnostic.config({
 	virtual_text = true,
 	underline = true,
