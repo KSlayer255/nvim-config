@@ -85,9 +85,10 @@ return {
 
 					local python_cmd = venv_python or (is_win and "python" or "python3")
 
-					return {
-						cmd = python_cmd,
-						args = { file },
+					-- Build a single command string
+					local command = python_cmd .. " " .. vim.fn.shellescape(file)
+
+					return vim.tbl_extend("force", shell_cmd(command), {
 						components = {
 							{ "on_output_quickfix", open = true },
 							"on_exit_set_status",
@@ -96,7 +97,7 @@ return {
 						env = {
 							VIRTUAL_ENV = venv_python and vim.fn.fnamemodify(python_cmd, ":h:h") or nil,
 						},
-					}
+					})
 				end,
 			})
 
