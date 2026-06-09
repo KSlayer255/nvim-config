@@ -28,6 +28,7 @@ return {
 				"selene",
 				"ruff",
 				"prettypst",
+				"mdformat",
 			},
 			run_on_start = true,
 		},
