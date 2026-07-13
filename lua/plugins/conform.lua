@@ -14,7 +14,8 @@ return {
 			javascript = { "prettierd", "prettier", stop_after_first = true },
 			tex = { "latexindent" },
 			rust = { "rustfmt" },
-			markdown = { "mdformat" },
+			markdown = { "prettierd", "prettier" },
+			html = { "prettierd", "prettier" },
 		},
 		-- Set default options
 		default_format_opts = {
