@@ -27,11 +27,9 @@ return {
 		})
 
 		vim.api.nvim_create_autocmd("FileType", {
-			pattern = { "tex", "verilog", "systemverilog", "haskell" },
+			pattern = { "tex", "verilog", "systemverilog", "haskell", "lua" },
 			callback = function()
 				vim.treesitter.start()
-				vim.wo.foldmethod = "expr"
-				vim.wo.foldexpr = "v:lua.vim.treesitter.foldexpr()"
 			end,
 		})
 	end,
