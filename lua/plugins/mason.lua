@@ -20,8 +20,8 @@ return {
 	{
 		"WhoIsSethDaniel/mason-tool-installer.nvim",
 		dependencies = { "mason-org/mason.nvim" },
-		opts = {
-			ensure_installed = {
+		opts = function()
+			local tools = {
 				-- Non-LSP tools only (formatters/linters)
 				"stylua",
 				"latexindent",
@@ -29,8 +29,18 @@ return {
 				"ruff",
 				"prettypst",
 				"mdformat",
-			},
-			run_on_start = true,
-		},
+			}
+			if vim.fn.executable("termux-setup-storage") == 1 then
+				-- Installed via Termux pkg/cargo instead
+				local skip = { stylua = true, latexindent = true, selene = true }
+				tools = vim.tbl_filter(function(t)
+					return not skip[t]
+				end, tools)
+			end
+			return {
+				ensure_installed = tools,
+				run_on_start = true,
+			}
+		end,
 	},
 }
