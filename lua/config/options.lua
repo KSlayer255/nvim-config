@@ -20,10 +20,11 @@ vim.g.maplocalleader = "\\"
 vim.api.nvim_set_hl(0, "NormalFloat", { bg = "none" })
 
 local home = vim.env.HOME or vim.env.USERPROFILE -- HOME on Linux, USERPROFILE on Windows
-local is_windows = vim.fn.has('win32') == 1
+local is_windows = vim.fn.has("win32") == 1
 
 local path_sep = is_windows and ";" or ":"
 local ghcup_bin = home .. (is_windows and "\\.ghcup\\bin" or "/.ghcup/bin")
 local cabal_bin = home .. (is_windows and "\\.cabal\\bin" or "/.cabal/bin")
-
 vim.env.PATH = ghcup_bin .. path_sep .. cabal_bin .. path_sep .. vim.env.PATH
+
+vim.opt.runtimepath:append(vim.fn.stdpath("data") .. "/site")

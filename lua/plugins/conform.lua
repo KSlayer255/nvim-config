@@ -12,7 +12,7 @@ return {
 			},
 			verilog = { "verible" },
 			javascript = { "prettierd", "prettier", stop_after_first = true },
-			tex = vim.fn.executable("termux-setup-storage") == 1 and {} or { "latexindent" },
+			tex = { "latexindent" },
 			rust = { "rustfmt" },
 			markdown = { "prettierd", "prettier" },
 			html = { "prettierd", "prettier" },
