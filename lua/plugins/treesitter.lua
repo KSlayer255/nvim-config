@@ -17,6 +17,7 @@ return {
 				"latex",
 				"verilog",
 				"typst",
+				"haskell",
 			},
 			sync_install = false,
 			auto_install = true,
