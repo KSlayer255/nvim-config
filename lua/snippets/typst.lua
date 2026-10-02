@@ -1,5 +1,16 @@
 -- ~/.config/nvim/lua/snippets/typst.lua
 -- LuaSnip port of Obsidian LaTeX Suite snippets for Typst
+--
+-- Notes
+--  * Regex triggers use trigEngine = "ecma" (needs jsregexp: `make install_jsregexp`).
+--    They are written in ECMAScript syntax (\d \s \w ...), NOT Lua-pattern syntax (%d %s ...).
+--  * LuaSnip's `wordTrig` defaults to true, which blocks a snippet when the character
+--    before the trigger is [%w_]  ->  "x" .. "sr" would not expand without a space.
+--    All math snippets below therefore set wordTrig = false (see make() below).
+--  * mini.pairs: snippets never use `(`, `[`, `{`, `"` as autosnippet triggers anymore
+--    (mini.pairs already handles those), and the few triggers that end in an opening
+--    bracket (`lr(`, `lr[`, `lr{`) swallow the closing bracket mini.pairs inserted.
+--  * Requires `enable_autosnippets = true` in luasnip's setup().
 
 local ls = require("luasnip")
 local s = ls.snippet
@@ -8,21 +19,29 @@ local i = ls.insert_node
 local f = ls.function_node
 local d = ls.dynamic_node
 local sn = ls.snippet_node
+local rep = require("luasnip.extras").rep
 local fmta = require("luasnip.extras.fmt").fmta
+local warned = {}
 
 -- ============================================================
 -- Helpers
 -- ============================================================
--- Math-mode detection via treesitter
--- In uben0/tree-sitter-typst, both inline ($x$) and display ($ x $)
--- math are wrapped in a node of type "math". Walk up from the cursor
--- node until we find it (or run out of ancestors).
+-- Math-mode detection via treesitter.
+-- In uben0/tree-sitter-typst, both inline ($x$) and display ($ x $) math are
+-- wrapped in a node of type "math".
 local function in_math()
 	local bufnr = vim.api.nvim_get_current_buf()
 
-	-- get_parser(bufnr, lang) attaches the parser to the buffer if needed.
 	local ok, parser = pcall(vim.treesitter.get_parser, bufnr, "typst")
 	if not ok or not parser then
+		if not warned[bufnr] then
+			warned[bufnr] = true
+			vim.notify(
+				"typst.lua: no treesitter parser for 'typst' — math snippets will not fire.\n"
+					.. "Fix: :TSInstall typst   (then :edit to reload this buffer)",
+				vim.log.levels.WARN
+			)
+		end
 		return false
 	end
 
@@ -31,8 +50,7 @@ local function in_math()
 		return false
 	end
 
-	-- Cursor: nvim_win_get_cursor returns {row, col} with row 1-indexed
-	-- and col 0-indexed bytes. Treesitter wants 0-indexed row, byte col.
+	-- nvim_win_get_cursor: row 1-indexed, col 0-indexed bytes. Treesitter wants 0-indexed row.
 	local cursor = vim.api.nvim_win_get_cursor(0)
 	local row = cursor[1] - 1
 	local col = cursor[2]
@@ -53,139 +71,90 @@ local function in_text()
 	return not in_math()
 end
 
-local visual = require("luasnip.extras.expand_conditions").visual
+-- Snippet factories -----------------------------------------
+-- make(condition, trigEngine, wordTrig) -> function(trig, nodes, opts)
+local function make(cond, engine, word)
+	return function(trig, nodes, opts)
+		local ctx = {
+			trig = trig,
+			snippetType = "autosnippet",
+			condition = cond,
+			wordTrig = word,
+		}
+		if engine then
+			ctx.trigEngine = engine
+		end
+		for k, v in pairs(opts or {}) do
+			ctx[k] = v
+		end
+		-- LuaSnip's default priority is 1000 and higher wins, so the small
+		-- LaTeX-Suite-style numbers below (-1, 1, 2) are treated as offsets.
+		ctx.priority = 1000 + ((opts and opts.priority) or 0)
+		return s(ctx, nodes)
+	end
+end
 
-local ALL_MACROS = {
-	"alpha",
-	"beta",
-	"gamma",
-	"Gamma",
-	"delta",
-	"Delta",
-	"epsilon",
-	"varepsilon",
-	"zeta",
-	"eta",
-	"theta",
-	"vartheta",
-	"Theta",
-	"iota",
-	"kappa",
-	"lambda",
-	"Lambda",
-	"mu",
-	"nu",
-	"xi",
-	"omicron",
-	"pi",
-	"rho",
-	"varrho",
-	"sigma",
-	"Sigma",
-	"tau",
-	"upsilon",
-	"Upsilon",
-	"phi",
-	"varphi",
-	"Phi",
-	"chi",
-	"psi",
-	"omega",
-	"Omega",
-	"parallel",
-	"perp",
-	"partial",
-	"nabla",
-	"hbar",
-	"ell",
-	"infty",
-	"oplus",
-	"ominus",
-	"otimes",
-	"oslash",
-	"square",
-	"star",
-	"dagger",
-	"vee",
-	"wedge",
-	"subseteq",
-	"subset",
-	"supseteq",
-	"supset",
-	"emptyset",
-	"exists",
-	"nexists",
-	"forall",
-	"implies",
-	"impliedby",
-	"iff",
-	"setminus",
-	"neg",
-	"lor",
-	"land",
-	"bigcup",
-	"bigcap",
-	"cdot",
-	"times",
-	"simeq",
-	"approx",
-	"leq",
-	"geq",
-	"neq",
-	"gg",
-	"ll",
-	"equiv",
-	"sim",
-	"propto",
-	"rightarrow",
-	"leftarrow",
-	"Rightarrow",
-	"Leftarrow",
-	"leftrightarrow",
-	"to",
-	"top",
-	"mapsto",
-	"cap",
-	"cup",
-	"in",
-	"sum",
-	"prod",
-	"exp",
-	"ln",
-	"log",
-	"det",
-	"dots",
-	"vdots",
-	"ddots",
-	"pm",
-	"mp",
-	"int",
-	"iint",
-	"iiint",
-	"oint",
-	"dot",
-	"ddot",
-	"hat",
-	"bar",
-	"tilde",
-	"vec",
-	"underline",
-	"overline",
-	"mathbf",
-	"mathcal",
-	"mathrm",
-	"mathbb",
-}
+local ms = make(in_math, nil, false) -- math, plain trigger
+local mr = make(in_math, "ecma", false) -- math, regex trigger
+local ts = make(in_text, nil, true) -- text, plain trigger
+local tr = make(in_text, "ecma", false) -- text, regex trigger
 
-local GREEK =
-	"(?:alpha|beta|gamma|Gamma|delta|Delta|epsilon|varepsilon|zeta|eta|theta|vartheta|Theta|iota|kappa|lambda|Lambda|mu|nu|xi|omicron|pi|rho|varrho|sigma|Sigma|tau|upsilon|Upsilon|phi|varphi|Phi|chi|psi|omega|Omega)"
-local SYMBOL =
-	"(?:parallel|perp|partial|nabla|hbar|ell|infty|oplus|ominus|otimes|oslash|square|star|dagger|vee|wedge|subseteq|subset|supseteq|supset|emptyset|exists|nexists|forall|implies|impliedby|iff|setminus|neg|lor|land|bigcup|bigcap|cdot|times|simeq|approx)"
-local MORE_SYMBOLS =
-	"(?:leq|geq|neq|gg|ll|equiv|sim|propto|rightarrow|leftarrow|Rightarrow|Leftarrow|leftrightarrow|to|top|mapsto|cap|cup|in|sum|prod|exp|ln|log|det|dots|vdots|ddots|pm|mp|int|iint|iiint|oint)"
-local ACCENT = "(?:dot|ddot|hat|bar|tilde|vec|underline|overline|mathbf|mathcal|mathrm|mathbb)"
+-- n-th capture group of a regex trigger (empty string if absent)
+local function cap(n)
+	return f(function(_, parent)
+		return parent.captures[n] or ""
+	end, {})
+end
 
--- Helper: extract the delimiter for pmat/bmat/.../Vmat.
+-- "open" <cursor> "close" <exit>
+local function wrap(open, close)
+	return { t(open), i(1), t(close), i(0) }
+end
+
+-- Visual-selection node: inserts the selection if one was cut with
+-- `cut_selection_keys`, otherwise an empty insert node.
+local function selection_or_insert(idx)
+	return d(idx, function(_, parent)
+		local env = (parent.snippet or parent).env
+		local sel = env and env.LS_SELECT_RAW
+		if type(sel) == "table" and #sel > 0 then
+			return sn(nil, { t(sel) })
+		elseif type(sel) == "string" and sel ~= "" then
+			return sn(nil, { t(sel) })
+		end
+		return sn(nil, { i(1) })
+	end, {})
+end
+
+-- mini.pairs compatibility: when a snippet's trigger ends in an opening bracket,
+-- mini.pairs has already inserted the closing one right after the cursor.
+-- Extend LuaSnip's clear_region by one char so that closer is removed too.
+local function eat_closer(closer)
+	return function(_, _, matched_trigger)
+		local cursor = vim.api.nvim_win_get_cursor(0)
+		local row, col = cursor[1] - 1, cursor[2]
+		local line = vim.api.nvim_get_current_line()
+		local to_col = col
+		if line:sub(col + 1, col + 1) == closer then
+			to_col = col + 1
+		end
+		return {
+			clear_region = {
+				from = { row, col - #matched_trigger },
+				to = { row, to_col },
+			},
+		}
+	end
+end
+
+-- Typst names (regex fragments, ECMAScript syntax) ------------
+local GREEK_NAMES =
+	"alpha|beta|gamma|Gamma|delta|Delta|epsilon|zeta|eta|theta|Theta|iota|kappa|lambda|Lambda|mu|nu|xi|Xi|omicron|pi|Pi|rho|sigma|Sigma|tau|upsilon|Upsilon|phi|Phi|chi|psi|Psi|omega|Omega"
+local GREEK = "(?:" .. GREEK_NAMES .. ")(?:\\.alt)?"
+local SYMBOL = "(?:nabla|diff|ell|infinity|parallel|perp|forall|exists|emptyset|dagger|star|square)"
+local ACCENT = "hat|tilde|macron|arrow|underline|overline|bold|bb|cal|upright|dot\\.double|dot"
+
+-- Matrix delimiter lookup
 local function mat_delim(typ)
 	if typ == "pmat" then
 		return "("
@@ -200,651 +169,236 @@ local function mat_delim(typ)
 	end
 end
 
+-- Letter + accent (x hat -> hat(x)): "xhat", "xbar", ...
+local function letter_accent(suffix, typst_fn, prio)
+	return mr("([a-zA-Z])" .. suffix, { t(typst_fn .. "("), cap(1), t(")") }, { priority = prio })
+end
+
+-- Greek + accent ("alpha hat" -> hat(alpha))
+local function greek_accent(suffix, typst_fn)
+	return mr("(" .. GREEK .. ") " .. suffix, { t(typst_fn .. "("), cap(1), t(")") }, { priority = 2 })
+end
+
 -- ============================================================
 return {
 
 	-- ----------------------------------------------------------
-	-- Math mode
+	-- Math mode entry
 	-- ----------------------------------------------------------
-	s({ trig = "mk", snippetType = "autosnippet", condition = in_text }, { t("$"), i(0), t("$") }),
+	ts("mk", { t("$"), i(1), t("$"), i(0) }),
 
-	s({ trig = "mk", snippetType = "autosnippet", condition = in_math }, { t("\\("), i(0), t("\\)") }),
+	ts("dm", fmta("$\n<>\n$", { i(1) })),
 
-	s({ trig = "dm", snippetType = "autosnippet", condition = in_text, wordTrig = true }, fmta("$\n<>\n$", { i(0) })),
+	-- text before `dm` on the same line: put the display math on its own lines
+	tr([[(\S)\s+dm]], fmta("<>\n$\n<>\n$", { cap(1), i(1) }), { priority = 1 }),
 
-	-- Regex: (\S\s*)dm → capture \n$ \n $0 \n $
-	s(
-		{
-			trig = "(%S%s*)dm",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_text,
-			wordTrig = true,
-			priority = 1,
-		},
-		fmta("<>\n$\n<>\n$", {
-			f(function(_, parent)
-				return parent.captures[1] or ""
-			end, {}),
-			i(0),
-		})
-	),
+	-- `dm` at the end of a list item: display math nested under the item
+	tr([[^([ \t]*>*)(\d+[.)]|[-*+])([ \t]+)(.*\s|)dm]], {
+		f(function(_, parent)
+			local lb = parent.captures[1] or ""
+			local marker = parent.captures[2] or ""
+			local ws = parent.captures[3] or ""
+			local text = (parent.captures[4] or ""):gsub("%s+$", "")
+			local indent = string.rep(" ", #marker) .. ws
+			return { lb .. marker .. ws .. text, indent .. "$", indent }
+		end, {}),
+		i(1),
+		f(function(_, parent)
+			local marker = parent.captures[2] or ""
+			local ws = parent.captures[3] or ""
+			local indent = string.rep(" ", #marker) .. ws
+			return { "", indent .. "$" }
+		end, {}),
+		i(0),
+	}, { priority = 2 }),
 
-	-- beg — multi-line
-	s(
-		{ trig = "([^\\%w])beg", trigEngine = "ecma", snippetType = "autosnippet", condition = in_math },
-		fmta("<><>(\n<>\n)", {
-			f(function(_, parent)
-				return parent.captures[1] or ""
-			end, {}),
-			i(0),
-			i(1),
-		})
-	),
+	-- beg: multi-line when alone at the start of a line ...
+	mr([[^(\s*)beg]], {
+		f(function(_, parent)
+			local ind = parent.captures[1] or ""
+			return { ind .. "(", ind .. "  " }
+		end, {}),
+		i(1),
+		f(function(_, parent)
+			local ind = parent.captures[1] or ""
+			return { "", ind .. ")" }
+		end, {}),
+		i(0),
+	}, { priority = 2 }),
 
-	-- beg — inline (note the missing "(" in the previous version is now fixed)
-	s(
-		{
-			trig = "([^\\]%w)beg",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		fmta("<><>( <> )", {
-			f(function(_, parent)
-				return parent.captures[1] or ""
-			end, {}),
-			i(0),
-			i(1),
-		})
-	),
+	-- ... inline otherwise
+	mr([[(\s|[^\w\s])beg]], { cap(1), t("( "), i(1), t(" )"), i(0) }),
 
 	-- ----------------------------------------------------------
-	-- Dashes
+	-- Dashes (text mode)
 	-- ----------------------------------------------------------
-	s({ trig = "--", snippetType = "autosnippet", condition = in_text }, { t("–") }),
-	s({ trig = "–-", snippetType = "autosnippet", condition = in_text }, { t("—") }),
-	s({ trig = "—-", snippetType = "autosnippet", condition = in_text }, { t("---") }),
+	make(in_text, nil, false)("--", { t("–") }),
+	make(in_text, nil, false)("–-", { t("—") }),
+	make(in_text, nil, false)("—-", { t("---") }),
 
 	-- ----------------------------------------------------------
-	-- Greek letters
+	-- Text inside math
+	-- (the `"` autosnippet was removed: mini.pairs already closes quotes)
 	-- ----------------------------------------------------------
-	s({ trig = "@a", snippetType = "autosnippet", condition = in_math }, { t("alpha") }),
-	s({ trig = "@b", snippetType = "autosnippet", condition = in_math }, { t("beta") }),
-	s({ trig = "@g", snippetType = "autosnippet", condition = in_math }, { t("gamma") }),
-	s({ trig = "@G", snippetType = "autosnippet", condition = in_math }, { t("Gamma") }),
-	s({ trig = "@d", snippetType = "autosnippet", condition = in_math }, { t("delta") }),
-	s({ trig = "@D", snippetType = "autosnippet", condition = in_math }, { t("Delta") }),
-	s({ trig = "@e", snippetType = "autosnippet", condition = in_math }, { t("epsilon") }),
-	s({ trig = ":e", snippetType = "autosnippet", condition = in_math }, { t("epsilon.alt") }),
-	s({ trig = "@z", snippetType = "autosnippet", condition = in_math }, { t("zeta") }),
-	s({ trig = "@t", snippetType = "autosnippet", condition = in_math }, { t("theta") }),
-	s({ trig = "@T", snippetType = "autosnippet", condition = in_math }, { t("Theta") }),
-	s({ trig = ":t", snippetType = "autosnippet", condition = in_math }, { t("theta.alt") }),
-	s({ trig = "@i", snippetType = "autosnippet", condition = in_math }, { t("iota") }),
-	s({ trig = "@k", snippetType = "autosnippet", condition = in_math }, { t("kappa") }),
-	s({ trig = "@l", snippetType = "autosnippet", condition = in_math }, { t("lambda") }),
-	s({ trig = "@L", snippetType = "autosnippet", condition = in_math }, { t("Lambda") }),
-	s({ trig = "@s", snippetType = "autosnippet", condition = in_math }, { t("sigma") }),
-	s({ trig = "@S", snippetType = "autosnippet", condition = in_math }, { t("Sigma") }),
-	s({ trig = "@u", snippetType = "autosnippet", condition = in_math }, { t("upsilon") }),
-	s({ trig = "@U", snippetType = "autosnippet", condition = in_math }, { t("Upsilon") }),
-	s({ trig = "@o", snippetType = "autosnippet", condition = in_math }, { t("omega") }),
-	s({ trig = "@O", snippetType = "autosnippet", condition = in_math }, { t("Omega") }),
-	s({ trig = "ome", snippetType = "autosnippet", condition = in_math }, { t("omega") }),
-	s({ trig = "Ome", snippetType = "autosnippet", condition = in_math }, { t("Omega") }),
-
-	-- ----------------------------------------------------------
-	-- Text environment
-	-- ----------------------------------------------------------
-	s(
-		{ trig = '\\n%s*\\"', trigEngine = "ecma", snippetType = "autosnippet", condition = in_math, wordTrig = false },
-		fmta('\n"<> " <>', { i(0), i(1) })
-	),
-
-	s(
-		{ trig = "text", snippetType = "autosnippet", condition = in_math, priority = -1 },
-		{ t('"'), i(0), t('"'), i(1) }
-	),
-
-	s({ trig = '"', snippetType = "autosnippet", condition = in_math, priority = -1 }, { t('"'), i(0), t('"'), i(1) }),
+	ms("text", wrap('"', '"'), { priority = -1 }),
 
 	-- ----------------------------------------------------------
 	-- Basic operations
 	-- ----------------------------------------------------------
-	s({ trig = "sr", snippetType = "autosnippet", condition = in_math }, { t("^2") }),
-	s({ trig = "cb", snippetType = "autosnippet", condition = in_math }, { t("^3") }),
-	s({ trig = "rd", snippetType = "autosnippet", condition = in_math }, { t("^("), i(0), t(")"), i(1) }),
-	s({ trig = "_", snippetType = "autosnippet", condition = in_math }, { t("_("), i(0), t(")"), i(1) }),
-	s({ trig = "sts", snippetType = "autosnippet", condition = in_math }, { t('_"'), i(0), t('"') }),
-	s({ trig = "sq", snippetType = "autosnippet", condition = in_math }, { t("sqrt("), i(0), t(")"), i(1) }),
-	s(
-		{ trig = "(%d)rt", trigEngine = "ecma", snippetType = "autosnippet", condition = in_math },
-		fmta("root(<>, <>)<>", {
-			f(function(_, parent)
-				return parent.captures[1] or ""
-			end, {}),
-			i(0),
-			i(1),
-		})
-	),
-	s(
-		{ trig = "//", snippetType = "autosnippet", condition = in_math },
-		{ t("frac("), i(0), t(", "), i(1), t(")"), i(2) }
-	),
-	s({ trig = "ee", snippetType = "autosnippet", condition = in_math }, { t("e^("), i(0), t(")"), i(1) }),
-	s({ trig = "invs", snippetType = "autosnippet", condition = in_math }, { t("^(-1)") }),
+	ms("sr", { t("^2") }),
+	ms("cb", { t("^3") }),
+	ms("rd", wrap("^(", ")")),
+	ms("_", wrap("_(", ")")),
+	ms("sts", wrap('_"', '"')),
+	ms("sq", wrap("sqrt(", ")")),
+	mr([[(\d)rt]], { t("root("), cap(1), t(", "), i(1), t(")"), i(0) }),
+	ms("//", { t("frac("), i(1), t(", "), i(2), t(")"), i(0) }),
+	ms("ee", wrap("e^(", ")")),
+	ms("invs", { t("^(-1)") }),
 
-	s(
-		{
-			trig = "([^\\])(exp|log|ln)",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		f(function(_, parent)
-			return (parent.captures[1] or "") .. (parent.captures[2] or "")
-		end, {})
-	),
-
-	s({ trig = "conj", snippetType = "autosnippet", condition = in_math }, { t("^*") }),
-	s({ trig = "Re", snippetType = "autosnippet", condition = in_math }, { t('op("Re")') }),
-	s({ trig = "Im", snippetType = "autosnippet", condition = in_math }, { t('op("Im")') }),
-	s({ trig = "bf", snippetType = "autosnippet", condition = in_math }, { t("bold("), i(0), t(")") }),
-	s({ trig = "rm", snippetType = "autosnippet", condition = in_math }, { t("upright("), i(0), t(")"), i(1) }),
+	ms("conj", { t("^*") }),
+	ms("Re", { t('op("Re")') }),
+	ms("Im", { t('op("Im")') }),
+	ms("bf", wrap("bold(", ")")),
+	ms("rm", wrap("upright(", ")")),
 
 	-- ----------------------------------------------------------
 	-- Linear algebra
 	-- ----------------------------------------------------------
-	s(
-		{
-			trig = "([^\\])(det)",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		f(function(_, parent)
-			return (parent.captures[1] or "") .. (parent.captures[2] or "")
-		end, {})
-	),
-
-	s({ trig = "trace", snippetType = "autosnippet", condition = in_math }, { t('op("Tr")') }),
+	ms("trace", { t('op("Tr")') }),
 
 	-- ----------------------------------------------------------
 	-- Accents on letters
 	-- ----------------------------------------------------------
-	s(
-		{
-			trig = "([a-zA-Z])hat",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		fmta("hat(<>)", { f(function(_, parent)
-			return parent.captures[1] or ""
-		end, {}) })
-	),
+	letter_accent("hat", "hat"),
+	letter_accent("bar", "macron"),
+	letter_accent("dot", "dot", -1),
+	letter_accent("ddot", "dot.double", 1),
+	letter_accent("tilde", "tilde"),
+	letter_accent("und", "underline"),
+	letter_accent("vec", "arrow"),
 
-	s(
-		{
-			trig = "([a-zA-Z])bar",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		fmta("macron(<>)", { f(function(_, parent)
-			return parent.captures[1] or ""
-		end, {}) })
-	),
-
-	s(
-		{
-			trig = "([a-zA-Z])dot",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-			priority = -1,
-		},
-		fmta("dot(<>)", { f(function(_, parent)
-			return parent.captures[1] or ""
-		end, {}) })
-	),
-
-	s(
-		{
-			trig = "([a-zA-Z])ddot",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-			priority = 1,
-		},
-		fmta("dot.double(<>)", { f(function(_, parent)
-			return parent.captures[1] or ""
-		end, {}) })
-	),
-
-	s(
-		{
-			trig = "([a-zA-Z])tilde",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		fmta("tilde(<>)", { f(function(_, parent)
-			return parent.captures[1] or ""
-		end, {}) })
-	),
-
-	s(
-		{
-			trig = "([a-zA-Z])und",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		fmta("underline(<>)", { f(function(_, parent)
-			return parent.captures[1] or ""
-		end, {}) })
-	),
-
-	s(
-		{
-			trig = "([a-zA-Z])vec",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		fmta("arrow(<>)", { f(function(_, parent)
-			return parent.captures[1] or ""
-		end, {}) })
-	),
-
-	s(
-		{
-			trig = "([a-zA-Z]),\\.",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		fmta("bold(<>)", { f(function(_, parent)
-			return parent.captures[1] or ""
-		end, {}) })
-	),
-
-	s(
-		{
-			trig = "([a-zA-Z])\\.,",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		fmta("bold(<>)", { f(function(_, parent)
-			return parent.captures[1] or ""
-		end, {}) })
-	),
-
-	s(
-		{
-			trig = "\\\\" .. GREEK .. ",\\.",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		fmta("bold(<>)", { f(function(_, parent)
-			return parent.captures[1] or ""
-		end, {}) })
-	),
-
-	s(
-		{
-			trig = "\\\\" .. GREEK .. "\\.,",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		fmta("bold(<>)", { f(function(_, parent)
-			return parent.captures[1] or ""
-		end, {}) })
-	),
+	-- bold letters: x,.  /  x.,
+	mr([[([a-zA-Z]),\.]], { t("bold("), cap(1), t(")") }),
+	mr([[([a-zA-Z])\.,]], { t("bold("), cap(1), t(")") }),
+	-- bold Greek letters: alpha,.  /  alpha.,
+	mr("(" .. GREEK .. [[),\.]], { t("bold("), cap(1), t(")") }, { priority = 2 }),
+	mr("(" .. GREEK .. [[)\.,]], { t("bold("), cap(1), t(")") }, { priority = 2 }),
 
 	-- pmod
-	s({ trig = "pmod", snippetType = "autosnippet", condition = in_math }, { t("mod("), i(1, "n"), t(")"), i(2) }),
+	ms("pmod", { t("mod("), i(1, "n"), t(")"), i(0) }, { priority = 2 }),
 
-	-- Auto letter subscript / space after macros
-	s(
-		{
-			trig = "([\\]?)([A-Za-z]+)(%d)",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-			priority = -1,
-		},
-		f(function(_, parent)
-			local isMacro = parent.captures[1] == "\\"
-			local digit = parent.captures[3]
-			local var = parent.captures[2]
-			if not isMacro then
-				return var .. "_(" .. digit .. ")"
-			end
-			if var:match("^" .. GREEK .. "$") then
-				return var .. "_(" .. digit .. ")"
-			else
-				return var .. " " .. digit
-			end
-		end, {})
-	),
+	-- Auto letter subscript: x2 -> x_2   (single letters only, not "log2", "alpha2")
+	mr([[(^|[^A-Za-z_])([A-Za-z])(\d)]], { cap(1), cap(2), t("_"), cap(3) }, { priority = -1 }),
 
-	s(
-		{
-			trig = "(\\\\" .. GREEK .. "|[A-Za-z])_((\\d+))(\\d)",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-			priority = -1,
-		},
-		f(function(_, parent)
-			return (parent.captures[1] or "") .. "_(" .. (parent.captures[2] or "") .. (parent.captures[3] or "") .. ")"
-		end, {})
-	),
+	-- Extend a subscript: x_12 -> x_(12)
+	mr([[([A-Za-z])_(\d)(\d)]], { cap(1), t("_("), cap(2), cap(3), t(")") }, { priority = -1 }),
+	mr([[([A-Za-z])_\((\d+)\)(\d)]], { cap(1), t("_("), cap(2), cap(3), t(")") }, { priority = -1 }),
 
-	s(
-		{
-			trig = "\\\\(" .. ACCENT .. ")\\(((\\\\" .. GREEK .. "|[A-Za-z]))\\)(?:_\\((\\d+)\\))?(\\d)",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-			priority = -1,
-		},
-		f(function(_, parent)
-			local a = parent.captures[1] or ""
-			local l = parent.captures[2] or ""
-			local s2 = parent.captures[3] or ""
-			local d = parent.captures[4] or ""
-			return a .. "(" .. l .. ")_(" .. s2 .. d .. ")"
-		end, {})
-	),
-
-	s(
-		{
-			trig = "\\\\("
-				.. ACCENT
-				.. ")\\(\\\\("
-				.. ACCENT
-				.. ")\\(((\\\\"
-				.. GREEK
-				.. "|[A-Za-z]))\\)\\)(?:_\\((\\d+)\\))?(\\d)",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-			priority = -1,
-		},
-		f(function(_, parent)
-			local a1 = parent.captures[1] or ""
-			local a2 = parent.captures[2] or ""
-			local l = parent.captures[3] or ""
-			local s2 = parent.captures[4] or ""
-			local d = parent.captures[5] or ""
-			return a1 .. "(" .. a2 .. "(" .. l .. "))_(" .. s2 .. d .. ")"
-		end, {})
+	-- Accent(letter) + digit: hat(x)2 -> hat(x)_2
+	mr(
+		"(" .. ACCENT .. [[)\(([A-Za-z]|]] .. GREEK .. [[)\)(\d)]],
+		{ cap(1), t("("), cap(2), t(")_"), cap(3) },
+		{ priority = -1 }
 	),
 
 	-- Subscript shortcuts
-	s({ trig = "xnn", snippetType = "autosnippet", condition = in_math }, { t("x_(n)") }),
-	s({ trig = "\\xii", snippetType = "autosnippet", condition = in_math, priority = 1 }, { t("x_(i)") }),
-	s({ trig = "xjj", snippetType = "autosnippet", condition = in_math }, { t("x_(j)") }),
-	s({ trig = "xp1", snippetType = "autosnippet", condition = in_math }, { t("x_(n+1)") }),
-	s({ trig = "ynn", snippetType = "autosnippet", condition = in_math }, { t("y_(n)") }),
-	s({ trig = "yii", snippetType = "autosnippet", condition = in_math }, { t("y_(i)") }),
-	s({ trig = "yjj", snippetType = "autosnippet", condition = in_math }, { t("y_(j)") }),
+	ms("xnn", { t("x_(n)") }),
+	ms("xii", { t("x_(i)") }, { priority = 1 }),
+	ms("xjj", { t("x_(j)") }),
+	ms("xp1", { t("x_(n+1)") }),
+	ms("ynn", { t("y_(n)") }),
+	ms("yii", { t("y_(i)") }),
+	ms("yjj", { t("y_(j)") }),
 
 	-- ----------------------------------------------------------
 	-- Symbols
 	-- ----------------------------------------------------------
-	s({ trig = "ooo", snippetType = "autosnippet", condition = in_math }, { t("oo") }),
-	s({ trig = "prod", snippetType = "autosnippet", condition = in_math }, { t("product") }),
-	s(
-		{ trig = "\\sum", snippetType = "autosnippet", condition = in_math },
-		{ t("sum_("), i(1, "i"), t("="), i(2, "1"), t(")^("), i(3, "N"), t(") "), i(4) }
-	),
-	s(
-		{ trig = "\\prod", snippetType = "autosnippet", condition = in_math },
-		{ t("product_("), i(1, "i"), t("="), i(2, "1"), t(")^("), i(3, "N"), t(") "), i(4) }
-	),
-	s(
-		{ trig = "lim", snippetType = "autosnippet", condition = in_math },
-		{ t("lim_("), i(1, "n"), t(" -> "), i(2, "oo"), t(") "), i(3) }
-	),
-	s({ trig = "+-", snippetType = "autosnippet", condition = in_math }, { t("plus.minus") }),
-	s({ trig = "-+", snippetType = "autosnippet", condition = in_math }, { t("minus.plus") }),
-	s({ trig = "...", snippetType = "autosnippet", condition = in_math }, { t("dots") }),
-	s({ trig = "xx", snippetType = "autosnippet", condition = in_math }, { t("times") }),
-	s({ trig = "**", snippetType = "autosnippet", condition = in_math }, { t("dot") }),
-	s({ trig = "para", snippetType = "autosnippet", condition = in_math }, { t("parallel") }),
-	s({ trig = "deg", snippetType = "autosnippet", condition = in_math }, { t("degree") }),
+	ms("ooo", { t("oo") }),
+	ms("sum", { t("sum_("), i(1, "i"), t("="), i(2, "1"), t(")^("), i(3, "N"), t(") "), i(4) }),
+	ms("prod", { t("product_("), i(1, "i"), t("="), i(2, "1"), t(")^("), i(3, "N"), t(") "), i(4) }),
+	ms("lim", { t("lim_("), i(1, "n"), t(" -> "), i(2, "oo"), t(") "), i(3) }),
+	ms("+-", { t("plus.minus") }),
+	ms("-+", { t("minus.plus") }),
+	ms("...", { t("dots") }),
+	ms("xx", { t("times") }),
+	ms("**", { t("dot") }),
+	ms("para", { t("parallel") }),
+	ms("deg", { t("degree") }),
 
-	s({ trig = "integ", snippetType = "autosnippet", condition = in_math }, { t("integral") }),
-	s({ trig = "integc", snippetType = "autosnippet", condition = in_math }, { t("integral.cont") }),
-	s({ trig = "integd", snippetType = "autosnippet", condition = in_math }, { t("integral.double") }),
-	s({ trig = "integdd", snippetType = "autosnippet", condition = in_math }, { t("integral.triple") }),
-	s({ trig = "bb", snippetType = "autosnippet", condition = in_math }, { t("bb("), i(0), t(")"), i(1) }),
-	s({ trig = "cal", snippetType = "autosnippet", condition = in_math }, { t("cal("), i(0), t(")"), i(1) }),
+	ms("integ", { t("integral") }),
+	ms("integc", { t("integral.cont") }),
+	ms("integd", { t("integral.double") }),
+	ms("integdd", { t("integral.triple") }),
+	ms("bb", wrap("bb(", ")")),
+	ms("cal", wrap("cal(", ")")),
 
-	s({ trig = "===", snippetType = "autosnippet", condition = in_math }, { t("equiv") }),
-	s({ trig = "!=", snippetType = "autosnippet", condition = in_math }, { t("neq") }),
-	s({ trig = ">=", snippetType = "autosnippet", condition = in_math }, { t("gt.eq") }),
-	s({ trig = "<=", snippetType = "autosnippet", condition = in_math }, { t("lt.eq") }),
-	s({ trig = ">>", snippetType = "autosnippet", condition = in_math }, { t("gt.double") }),
-	s({ trig = "<<", snippetType = "autosnippet", condition = in_math }, { t("lt.double") }),
-	s({ trig = "simm", snippetType = "autosnippet", condition = in_math }, { t("tilde.op") }),
-	s({ trig = "sim=", snippetType = "autosnippet", condition = in_math }, { t("tilde.eq") }),
-	s({ trig = "prop", snippetType = "autosnippet", condition = in_math }, { t("prop") }),
+	ms("===", { t("equiv") }),
+	ms("!=", { t("neq") }),
+	ms(">=", { t("gt.eq") }),
+	ms("<=", { t("lt.eq") }),
+	ms(">>", { t("gt.double") }),
+	ms("<<", { t("lt.double") }),
+	ms("simm", { t("tilde.op") }),
+	ms("sim=", { t("tilde.eq") }),
+	ms("prop", { t("prop") }),
 
-	s({ trig = "<->", snippetType = "autosnippet", condition = in_math }, { t("arrow.l.r") }),
-	s({ trig = "->", snippetType = "autosnippet", condition = in_math }, { t("arrow.r") }),
-	s({ trig = "!>", snippetType = "autosnippet", condition = in_math }, { t("arrow.r.bar") }),
-	s({ trig = "=>", snippetType = "autosnippet", condition = in_math }, { t("arrow.r.double") }),
-	s({ trig = "=<", snippetType = "autosnippet", condition = in_math }, { t("arrow.l.double") }),
+	ms("<->", { t("arrow.l.r") }, { priority = 2 }),
+	ms("->", { t("arrow.r") }),
+	ms("!>", { t("arrow.r.bar") }),
+	ms("=>", { t("arrow.r.double") }),
+	ms("=<", { t("arrow.l.double") }),
 
-	s({ trig = "and", snippetType = "autosnippet", condition = in_math, wordTrig = true }, { t("sect") }),
-	s({ trig = "orr", snippetType = "autosnippet", condition = in_math }, { t("union") }),
-	s({ trig = "inn", snippetType = "autosnippet", condition = in_math }, { t("in") }),
-	s({ trig = "notin", snippetType = "autosnippet", condition = in_math }, { t("in.not") }),
-	s({ trig = "\\\\\\", snippetType = "autosnippet", condition = in_math }, { t("without") }),
-	s({ trig = "sub=", snippetType = "autosnippet", condition = in_math }, { t("subset.eq") }),
-	s({ trig = "sup=", snippetType = "autosnippet", condition = in_math }, { t("supset.eq") }),
-	s({ trig = "eset", snippetType = "autosnippet", condition = in_math }, { t("emptyset") }),
-	s(
-		{ trig = "set", snippetType = "autosnippet", condition = in_math, wordTrig = true },
-		{ t("{ "), i(0), t(" }"), i(1) }
-	),
-	s(
-		{ trig = "(n?)e\\xi sts", trigEngine = "ecma", snippetType = "autosnippet", condition = in_math, priority = 1 },
-		fmta("<><>exists", {
-			f(function(_, parent)
-				return parent.captures[1] or ""
-			end, {}),
-			t(""), -- placeholder to keep positions simple
-		})
-	),
+	ms("and", { t("sect") }, { wordTrig = true }),
+	ms("orr", { t("union") }),
+	ms("inn", { t("in") }),
+	ms("notin", { t("in.not") }),
+	ms("\\\\\\", { t("without") }),
+	ms("sub=", { t("subset.eq") }),
+	ms("sup=", { t("supset.eq") }),
+	ms("eset", { t("emptyset") }),
+	ms("set", { t("{ "), i(1), t(" }"), i(0) }, { wordTrig = true }),
 
-	s({ trig = "LL", snippetType = "autosnippet", condition = in_math }, { t("cal(L)") }),
-	s({ trig = "HH", snippetType = "autosnippet", condition = in_math }, { t("cal(H)") }),
-	s({ trig = "CC", snippetType = "autosnippet", condition = in_math }, { t("bb(C)") }),
-	s({ trig = "RR", snippetType = "autosnippet", condition = in_math }, { t("bb(R)") }),
-	s({ trig = "ZZ", snippetType = "autosnippet", condition = in_math }, { t("bb(Z)") }),
-	s({ trig = "NN", snippetType = "autosnippet", condition = in_math }, { t("bb(N)") }),
-	s({ trig = "QQ", snippetType = "autosnippet", condition = in_math }, { t("bb(Q)") }),
+	ms("LL", { t("cal(L)") }),
+	ms("HH", { t("cal(H)") }),
+	ms("CC", { t("bb(C)") }),
+	ms("RR", { t("bb(R)") }),
+	ms("ZZ", { t("bb(Z)") }),
+	ms("NN", { t("bb(N)") }),
+	ms("QQ", { t("bb(Q)") }),
 
-	-- Greek accents
-	s(
-		{
-			trig = "\\\\(" .. GREEK .. ") tilde",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		fmta("tilde(<>)", { f(function(_, parent)
-			return parent.captures[1] or ""
-		end, {}) })
-	),
+	-- Greek + accent ("alpha tilde" -> tilde(alpha))
+	greek_accent("tilde", "tilde"),
+	greek_accent("und", "underline"),
+	greek_accent("hat", "hat"),
+	greek_accent("dot", "dot"),
+	greek_accent("bar", "macron"),
+	greek_accent("vec", "arrow"),
 
-	s(
-		{
-			trig = "\\\\(" .. GREEK .. ") und",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		fmta("underline(<>)", { f(function(_, parent)
-			return parent.captures[1] or ""
-		end, {}) })
-	),
-
-	s(
-		{
-			trig = "\\\\(" .. GREEK .. ") hat",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		fmta("hat(<>)", { f(function(_, parent)
-			return parent.captures[1] or ""
-		end, {}) })
-	),
-
-	s(
-		{
-			trig = "\\\\(" .. GREEK .. ") dot",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		fmta("dot(<>)", { f(function(_, parent)
-			return parent.captures[1] or ""
-		end, {}) })
-	),
-
-	s(
-		{
-			trig = "\\\\(" .. GREEK .. ") bar",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		fmta("macron(<>)", { f(function(_, parent)
-			return parent.captures[1] or ""
-		end, {}) })
-	),
-
-	s(
-		{
-			trig = "\\\\(" .. GREEK .. ") vec",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		fmta("arrow(<>)", { f(function(_, parent)
-			return parent.captures[1] or ""
-		end, {}) })
-	),
-
-	s(
-		{
-			trig = "\\\\(" .. GREEK .. "|" .. SYMBOL .. ") sr",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		fmta("<><>^(2)", {
-			t(""),
-			f(function(_, parent)
-				return parent.captures[1] or ""
-			end, {}),
-		})
-	),
-
-	-- (The two above are simpler as plain function nodes — let's rewrite the three Greek+suffix ones:)
-
-	s(
-		{
-			trig = "\\\\(" .. GREEK .. "|" .. SYMBOL .. ") cb",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		f(function(_, parent)
-			return (parent.captures[1] or "") .. "^(3)"
-		end, {})
-	),
-
-	s(
-		{
-			trig = "\\\\(" .. GREEK .. "|" .. SYMBOL .. ") rd",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
-		fmta("<><>^(<>)<>", {
-			t(""),
-			f(function(_, parent)
-				return parent.captures[1] or ""
-			end, {}),
-			i(0),
-			i(1),
-		})
-	),
+	-- Greek / symbol + power ("alpha sr" -> alpha^(2))
+	mr("(" .. GREEK .. "|" .. SYMBOL .. ") sr", { cap(1), t("^(2)") }, { priority = 2 }),
+	mr("(" .. GREEK .. "|" .. SYMBOL .. ") cb", { cap(1), t("^(3)") }, { priority = 2 }),
+	mr("(" .. GREEK .. "|" .. SYMBOL .. ") rd", { cap(1), t("^("), i(1), t(")"), i(0) }, { priority = 2 }),
 
 	-- ----------------------------------------------------------
 	-- Derivatives and integrals
 	-- ----------------------------------------------------------
-	s(
-		{ trig = "par", snippetType = "autosnippet", condition = in_math },
-		{ t("frac( diff "), i(1, "y"), t(", diff "), i(2, "x"), t(" ) "), i(3) }
-	),
+	ms("par", { t("frac( diff "), i(1, "y"), t(", diff "), i(2, "x"), t(" ) "), i(3) }),
 
-	s(
-		{ trig = "par([0-9])", trigEngine = "ecma", snippetType = "autosnippet", condition = in_math },
-		fmta("frac( diff^<> <>, diff <>^<> ) <>", {
-			f(function(_, parent)
-				return parent.captures[1] or ""
-			end, {}),
-			i(1, "y"),
-			i(2, "x"),
-			f(function(_, parent)
-				return parent.captures[1] or ""
-			end, {}),
-			i(3),
-		})
-	),
+	mr([[par(\d)]], {
+		t("frac( diff^"),
+		cap(1),
+		t(" "),
+		i(1, "y"),
+		t(", diff "),
+		i(2, "x"),
+		t("^"),
+		cap(1),
+		t(" ) "),
+		i(3),
+	}),
 
-	s({ trig = "parn", snippetType = "autosnippet", condition = in_math, priority = 1 }, {
+	ms("parn", {
 		t("frac( diff^("),
 		i(1, "n"),
 		t(") "),
@@ -852,157 +406,122 @@ return {
 		t(", diff "),
 		i(3, "x"),
 		t("^("),
-		i(1, "n"),
+		rep(1),
 		t(") ) "),
 		i(4),
+	}, { priority = 1 }),
+
+	-- manual (not auto) snippet: pa<letter><letter>  e.g. paxy
+	mr(
+		[[pa([A-Za-z])([A-Za-z])]],
+		{ t("frac( diff "), cap(1), t(", diff "), cap(2), t(" ) "), i(0) },
+		{ snippetType = "snippet" }
+	),
+
+	ms("ddt", { t("frac(d, d t) ") }),
+
+	ms("int", { t("integral") }, { priority = -1 }),
+
+	ms("dint", {
+		t("integral_("),
+		i(1, "0"),
+		t(")^("),
+		i(2, "1"),
+		t(") "),
+		i(3),
+		t(" , dif "),
+		i(4, "x"),
+		t(" "),
+		i(5),
 	}),
 
-	s(
-		{ trig = "pa([A-Za-z])([A-Za-z])", trigEngine = "ecma", snippetType = "snippet", condition = in_math },
-		fmta("frac( diff <>, diff <> ) ", {
-			f(function(_, parent)
-				return parent.captures[1] or ""
-			end, {}),
-			f(function(_, parent)
-				return parent.captures[2] or ""
-			end, {}),
-		})
-	),
+	ms("oint", { t("integral.cont") }),
+	ms("iint", { t("integral.double") }),
+	ms("iiint", { t("integral.triple") }),
 
-	s({ trig = "ddt", snippetType = "autosnippet", condition = in_math }, { t("frac(d, d t) ") }),
-
-	s(
-		{ trig = "([^\\])int", trigEngine = "ecma", snippetType = "autosnippet", condition = in_math, priority = -1 },
-		f(function(_, parent)
-			return (parent.captures[1] or "") .. "integral"
-		end, {})
-	),
-
-	s(
-		{ trig = "\\int", snippetType = "autosnippet", condition = in_math },
-		{ t("integral "), i(0), t(" , dif "), i(1, "x"), t(" "), i(2) }
-	),
-
-	s(
-		{ trig = "dint", snippetType = "autosnippet", condition = in_math },
-		{ t("integral_("), i(1, "0"), t(")^("), i(2, "1"), t(") "), i(3), t(" , dif "), i(4, "x"), t(" "), i(5) }
-	),
-
-	s({ trig = "oint", snippetType = "autosnippet", condition = in_math }, { t("integral.cont") }),
-	s({ trig = "iint", snippetType = "autosnippet", condition = in_math }, { t("integral.double") }),
-	s({ trig = "iiint", snippetType = "autosnippet", condition = in_math }, { t("integral.triple") }),
-
-	s(
-		{ trig = "oinf", snippetType = "autosnippet", condition = in_math },
-		{ t("integral_(0)^(oo) "), i(0), t(" , dif "), i(1, "x"), t(" "), i(2) }
-	),
-
-	s(
-		{ trig = "infi", snippetType = "autosnippet", condition = in_math },
-		{ t("integral_(-oo)^(oo) "), i(0), t(" , dif "), i(1, "x"), t(" "), i(2) }
-	),
+	ms("oinf", { t("integral_(0)^(oo) "), i(1), t(" , dif "), i(2, "x"), t(" "), i(3) }),
+	ms("infi", { t("integral_(-oo)^(oo) "), i(1), t(" , dif "), i(2, "x"), t(" "), i(3) }),
 
 	-- Trigonometry
-	s(
-		{
-			trig = "(arccsc|arcsec|arccot)",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			priority = 1,
-		},
-		fmta('op("<><>")', {
-			t(""), -- intentional empty first slot for clarity
-			f(function(_, parent)
-				return parent.captures[1] or ""
-			end, {}),
-		})
+	mr(
+		[[(arccsc|arcsec|arccot)]],
+		{ f(function(_, parent)
+			return 'op("' .. (parent.captures[1] or "") .. '")'
+		end, {}) },
+		{ priority = 1 }
 	),
 
 	-- ----------------------------------------------------------
-	-- Visual operations
+	-- Visual operations (select text, press your `cut_selection_keys`,
+	-- type the trigger, expand with your expand key)
 	-- ----------------------------------------------------------
 	s(
-		{ trig = "U", snippetType = "snippet", condition = visual },
-		{ t("underbrace("), i(1, "VISUAL"), t(", "), i(0), t(")") }
+		{ trig = "U", snippetType = "snippet", condition = in_math },
+		{ t("underbrace("), selection_or_insert(1), t(", "), i(2), t(")"), i(0) }
 	),
 	s(
-		{ trig = "O", snippetType = "snippet", condition = visual },
-		{ t("overbrace("), i(1, "VISUAL"), t(", "), i(0), t(")") }
+		{ trig = "O", snippetType = "snippet", condition = in_math },
+		{ t("overbrace("), selection_or_insert(1), t(", "), i(2), t(")"), i(0) }
+	),
+	-- Typst has no \underset; limits(x)_(y) places y underneath x
+	s(
+		{ trig = "B", snippetType = "snippet", condition = in_math },
+		{ t("limits("), selection_or_insert(1), t(")_("), i(2), t(")"), i(0) }
 	),
 	s(
-		{ trig = "B", snippetType = "snippet", condition = visual },
-		{ t("underset("), i(1, "VISUAL"), t(", "), i(0), t(")") }
+		{ trig = "C", snippetType = "snippet", condition = in_math },
+		{ t("cancel("), selection_or_insert(1), t(")"), i(0) }
 	),
-	s({ trig = "C", snippetType = "snippet", condition = visual }, { t("cancel("), i(1, "VISUAL"), t(")") }),
 	s(
-		{ trig = "K", snippetType = "snippet", condition = visual },
-		{ t("cancel("), i(1, "VISUAL"), t(")^("), i(0), t(")") }
+		{ trig = "K", snippetType = "snippet", condition = in_math },
+		{ t("cancel("), selection_or_insert(1), t(")^("), i(2), t(")"), i(0) }
 	),
-	s({ trig = "S", snippetType = "snippet", condition = visual }, { t("sqrt("), i(1, "VISUAL"), t(")") }),
+	s(
+		{ trig = "S", snippetType = "snippet", condition = in_math },
+		{ t("sqrt("), selection_or_insert(1), t(")"), i(0) }
+	),
 
 	-- ----------------------------------------------------------
 	-- Physics
 	-- ----------------------------------------------------------
-	s({ trig = "kbt", snippetType = "autosnippet", condition = in_math }, { t("k_B T") }),
-	s({ trig = "msun", snippetType = "autosnippet", condition = in_math }, { t("M_odot") }),
+	ms("kbt", { t("k_B T") }),
+	ms("msun", { t("M_(dot.circle)") }),
 
 	-- ----------------------------------------------------------
 	-- Quantum mechanics
 	-- ----------------------------------------------------------
-	s({ trig = "dag", snippetType = "autosnippet", condition = in_math }, { t("^dagger") }),
-	s({ trig = "o+", snippetType = "autosnippet", condition = in_math }, { t("oplus") }),
-	s({ trig = "ox", snippetType = "autosnippet", condition = in_math, wordTrig = true }, { t("otimes") }),
-	s({ trig = "bra", snippetType = "autosnippet", condition = in_math }, { t("bra("), i(0), t(") "), i(1) }),
-	s({ trig = "ket", snippetType = "autosnippet", condition = in_math }, { t("ket("), i(0), t(") "), i(1) }),
-	s(
-		{ trig = "brk", snippetType = "autosnippet", condition = in_math },
-		{ t("braket("), i(0), t(", "), i(1), t(") "), i(2) }
-	),
-	s(
-		{ trig = "outer", snippetType = "autosnippet", condition = in_math },
-		{ t("ket("), i(1, "psi"), t(") bra("), i(1, "psi"), t(") "), i(2) }
-	),
+	ms("dag", { t("^dagger") }),
+	ms("o+", { t("plus.circle") }),
+	ms("ox", { t("times.circle") }, { wordTrig = true }),
+	ms("bra", wrap("bra(", ") ")),
+	ms("ket", wrap("ket(", ") ")),
+	ms("brk", { t("braket("), i(1), t(", "), i(2), t(") "), i(0) }),
+	ms("outer", { t("ket("), i(1, "psi"), t(") bra("), rep(1), t(") "), i(0) }),
 
 	-- ----------------------------------------------------------
 	-- Chemistry
 	-- ----------------------------------------------------------
-	s({ trig = "pu", snippetType = "autosnippet", condition = in_math }, { t("pu("), i(0), t(")") }),
-	s({ trig = "cee", snippetType = "autosnippet", condition = in_math }, { t("ce("), i(0), t(")") }),
-	s({ trig = "he4", snippetType = "autosnippet", condition = in_math }, { t('""^4_2 He') }),
-	s({ trig = "he3", snippetType = "autosnippet", condition = in_math }, { t('""^3_2 He') }),
-	s(
-		{ trig = "iso", snippetType = "autosnippet", condition = in_math },
-		{ t('""^('), i(1, "4"), t(")_("), i(2, "2"), t(")"), i(3, "He") }
-	),
+	ms("pu", wrap("pu(", ")")),
+	ms("cee", wrap("ce(", ")")),
+	ms("he4", { t('""^4_2 He') }),
+	ms("he3", { t('""^3_2 He') }),
+	ms("iso", { t('""^('), i(1, "4"), t(")_("), i(2, "2"), t(")"), i(3, "He") }),
 
 	-- ----------------------------------------------------------
-	-- Environments — matrices (multi-line, autosnippet)
+	-- Environments: matrices (multi-line, auto)
 	-- ----------------------------------------------------------
-	s(
-		{
-			trig = "([pbBvV]mat)",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
+	mr(
+		[[([pbBvV]mat)]],
 		fmta('mat(delim: "<>",\n<>\n)', {
 			f(function(_, parent)
 				return mat_delim(parent.captures[1] or "")
 			end, {}),
-			i(0),
+			i(1),
 		})
 	),
 
-	s(
-		{
-			trig = "(matrix|cases|align|array)",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-		},
+	mr(
+		[[(matrix|cases|align|array)]],
 		d(1, function(_, parent)
 			local typ = parent.captures[1] or ""
 			if typ == "matrix" or typ == "array" then
@@ -1015,25 +534,20 @@ return {
 		end, {})
 	),
 
-	-- Environments — matrices (single-line, manual)
-	s(
-		{ trig = "([pbBvV]mat)", trigEngine = "ecma", snippetType = "snippet", condition = in_math, wordTrig = false },
+	-- Environments: matrices (single-line, manual)
+	mr(
+		[[([pbBvV]mat)]],
 		fmta('mat(delim: "<>", <>)', {
 			f(function(_, parent)
 				return mat_delim(parent.captures[1] or "")
 			end, {}),
-			i(0),
-		})
+			i(1),
+		}),
+		{ snippetType = "snippet" }
 	),
 
-	s(
-		{
-			trig = "(matrix|cases|align|array)",
-			trigEngine = "ecma",
-			snippetType = "snippet",
-			condition = in_math,
-			wordTrig = false,
-		},
+	mr(
+		[[(matrix|cases|align|array)]],
 		d(1, function(_, parent)
 			local typ = parent.captures[1] or ""
 			if typ == "matrix" or typ == "array" then
@@ -1043,125 +557,77 @@ return {
 			else
 				return sn(nil, { i(1) })
 			end
-		end, {})
+		end, {}),
+		{ snippetType = "snippet" }
 	),
 
 	-- ----------------------------------------------------------
 	-- Brackets
+	-- (the plain `(`, `[`, `{` autosnippets were removed: mini.pairs handles them)
 	-- ----------------------------------------------------------
+	ms("avg", { t("angle.l "), i(1), t(" angle.r "), i(0) }),
+	ms("norm", wrap("abs(", ")"), { priority = 1 }),
+	ms("Norm", wrap("norm(", ")"), { priority = 1 }),
+	ms("ceil", wrap("ceil(", ")")),
+	ms("floor", wrap("floor(", ")")),
+	ms("mod", wrap("|", "|")),
+
+	-- Visual-selection brackets (manual snippets; eat the closer mini.pairs adds)
 	s(
-		{ trig = "avg", snippetType = "autosnippet", condition = in_math },
-		{ t("angle.l "), i(0), t(" angle.r "), i(1) }
+		{ trig = "(", snippetType = "snippet", resolveExpandParams = eat_closer(")") },
+		{ t("("), selection_or_insert(1), t(")"), i(0) }
 	),
 	s(
-		{ trig = "norm", snippetType = "autosnippet", condition = in_math, priority = 1 },
-		{ t("abs("), i(0), t(")"), i(1) }
+		{ trig = "[", snippetType = "snippet", resolveExpandParams = eat_closer("]") },
+		{ t("["), selection_or_insert(1), t("]"), i(0) }
 	),
 	s(
-		{ trig = "Norm", snippetType = "autosnippet", condition = in_math, priority = 1 },
-		{ t("norm("), i(0), t(")"), i(1) }
-	),
-	s({ trig = "ceil", snippetType = "autosnippet", condition = in_math }, { t("ceil("), i(0), t(")"), i(1) }),
-	s({ trig = "floor", snippetType = "autosnippet", condition = in_math }, { t("floor("), i(0), t(")"), i(1) }),
-	s({ trig = "mod", snippetType = "autosnippet", condition = in_math }, { t("|"), i(0), t("|"), i(1) }),
-
-	s({ trig = "(", snippetType = "snippet", condition = visual }, { t("("), i(1, "VISUAL"), t(")") }),
-	s({ trig = "[", snippetType = "snippet", condition = visual }, { t("["), i(1, "VISUAL"), t("]") }),
-	s({ trig = "{", snippetType = "snippet", condition = visual }, { t("{"), i(1, "VISUAL"), t("}") }),
-
-	s({ trig = "(", snippetType = "autosnippet", condition = in_math }, { t("("), i(0), t(")"), i(1) }),
-	s({ trig = "{", snippetType = "autosnippet", condition = in_math }, { t("{"), i(0), t("}"), i(1) }),
-	s({ trig = "[", snippetType = "autosnippet", condition = in_math }, { t("["), i(0), t("]"), i(1) }),
-
-	s({ trig = "lr(", snippetType = "autosnippet", condition = in_math }, { t("lr(("), i(0), t("))"), i(1) }),
-	s({ trig = "lr{", snippetType = "autosnippet", condition = in_math }, { t("lr({"), i(0), t("})"), i(1) }),
-	s({ trig = "lr[", snippetType = "autosnippet", condition = in_math }, { t("lr(["), i(0), t("])"), i(1) }),
-	s({ trig = "lr|", snippetType = "autosnippet", condition = in_math }, { t("lr(|"), i(0), t("|)"), i(1) }),
-	s(
-		{ trig = "lra", snippetType = "autosnippet", condition = in_math },
-		{ t("lr(angle.l "), i(0), t(" angle.r)"), i(1) }
+		{ trig = "{", snippetType = "snippet", resolveExpandParams = eat_closer("}") },
+		{ t("{"), selection_or_insert(1), t("}"), i(0) }
 	),
 
-	-- ----------------------------------------------------------
-	-- Disable snippets while typing macros
-	-- ----------------------------------------------------------
-	s(
-		{
-			trig = "\\[A-Za-z]{2,}",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-			priority = 3,
-		},
-		f(function(_, parent)
-			local str = parent.trigger or ""
-			for _, name in ipairs(ALL_MACROS) do
-				if name:sub(1, #str) == str then
-					return str
-				end
-			end
-			return ""
-		end, {})
-	),
-
-	s(
-		{
-			trig = "\\[A-Za-z]{2,}",
-			trigEngine = "ecma",
-			snippetType = "autosnippet",
-			condition = in_math,
-			wordTrig = false,
-			priority = 3,
-		},
-		f(function(_, parent)
-			local str = parent.trigger or ""
-			local trig = str:sub(2)
-			for _, name in ipairs(ALL_MACROS) do
-				if name:sub(1, #str) == str then
-					return ""
-				end
-			end
-			local macro = trig:sub(1, -2)
-			local letter = trig:sub(-1)
-			return "\\" .. macro .. " " .. letter
-		end, {})
-	),
+	-- lr(...) auto-sizing delimiters. Triggers ending in `(` `[` `{` get the
+	-- mini.pairs closer removed so brackets are not doubled.
+	ms("lr(", { t("lr(("), i(1), t("))"), i(0) }, { resolveExpandParams = eat_closer(")") }),
+	ms("lr{", { t("lr({"), i(1), t("})"), i(0) }, { resolveExpandParams = eat_closer("}") }),
+	ms("lr[", { t("lr(["), i(1), t("])"), i(0) }, { resolveExpandParams = eat_closer("]") }),
+	ms("lr|", { t("lr(|"), i(1), t("|)"), i(0) }),
+	ms("lra", { t("lr(angle.l "), i(1), t(" angle.r)"), i(0) }),
 
 	-- ----------------------------------------------------------
 	-- Taylor expansion
 	-- ----------------------------------------------------------
-	s({ trig = "tayl", snippetType = "autosnippet", condition = in_math }, {
+	ms("tayl", {
 		i(1, "f"),
 		t("("),
 		i(2, "x"),
 		t(" + "),
 		i(3, "h"),
 		t(") = "),
-		i(1, "f"),
+		rep(1),
 		t("("),
-		i(2, "x"),
+		rep(2),
 		t(") + "),
-		i(1, "f"),
+		rep(1),
 		t("'("),
-		i(2, "x"),
+		rep(2),
 		t(") "),
-		i(3, "h"),
+		rep(3),
 		t(" + "),
-		i(1, "f"),
+		rep(1),
 		t("''("),
-		i(2, "x"),
+		rep(2),
 		t(") frac("),
-		i(3, "h"),
+		rep(3),
 		t("^2, 2!) + dots "),
 		i(4),
 	}),
 
 	-- ----------------------------------------------------------
-	-- Identity matrix
+	-- Identity matrix: iden3 -> mat(1, 0, 0; 0, 1, 0; 0, 0, 1)
 	-- ----------------------------------------------------------
-	s(
-		{ trig = "iden(%d)", trigEngine = "ecma", snippetType = "autosnippet", condition = in_math },
+	mr(
+		[[iden(\d)]],
 		f(function(_, parent)
 			local n = tonumber(parent.captures[1]) or 2
 			local rows = {}
@@ -1175,31 +641,4 @@ return {
 			return "mat(" .. table.concat(rows, "; ") .. ")"
 		end, {})
 	),
-
-	-- ----------------------------------------------------------
-	-- Display math in a list
-	-- ----------------------------------------------------------
-	s({
-		trig = "(?<positive_lookbehind>(?:\\n|^)[ \\t]*>*)(?<marker>\\d+[.)]|[-*+])(?<whitespace>[ \\t]+)(?<text>.*)dm",
-		trigEngine = "ecma",
-		snippetType = "autosnippet",
-		condition = in_text,
-		priority = 2,
-	}, {
-		f(function(_, parent)
-			local lb = parent.captures[1] or ""
-			local marker = parent.captures[2] or ""
-			local ws = parent.captures[3] or ""
-			local text = parent.captures[4] or ""
-			local indent = string.rep(" ", #marker) .. ws
-			return { lb .. marker .. ws .. text, indent .. "$", indent }
-		end, {}),
-		i(1),
-		f(function(_, parent)
-			local marker = parent.captures[2] or ""
-			local ws = parent.captures[3] or ""
-			local indent = string.rep(" ", #marker) .. ws
-			return { "", indent .. "$" }
-		end, {}),
-	}),
 }
